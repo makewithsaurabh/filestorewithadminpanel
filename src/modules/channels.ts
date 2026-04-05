@@ -259,6 +259,7 @@ async function renderManageChannel(ctx: MyContext, chatId: string) {
 
   const kb = new InlineKeyboard().text(ch.is_force_join ? "🟢 Force Join: ON" : "⚪ Force Join: OFF", `toggle_ch_fj_${ch.id}`).row();
   if (isOwner(ctx)) {
+    kb.text("👤 Assign to Admin", `assign_ch_admin_${ch.id}`).row();
     kb.text("🔼 Move Up", `move_ch_up_${ch.id}`).text("🔽 Move Down", `move_ch_down_${ch.id}`).row();
     kb.text("👮 Admin List", `ch_admins_${ch.id}`).row();
     kb.text("📝 Post Message", `post_to_ch_${ch.id}`).row();
@@ -284,6 +285,17 @@ channelsModule.callbackQuery(/^post_to_ch_(.+)$/, async (ctx) => {
   });
   await ctx.db.prepare("INSERT OR REPLACE INTO admin_states (admin_id, state) VALUES (?, ?)")
     .bind(ctx.from!.id, `wait_ch_post_msg:${chId}:${ctx.callbackQuery.message?.message_id}`).run();
+});
+
+channelsModule.callbackQuery(/^assign_ch_admin_(.+)$/, async (ctx) => {
+  if (!isOwner(ctx)) return;
+  const chId = ctx.match[1];
+  await ctx.editMessageText("👤 **Assign to Admin**\n\nPlease send the **User ID** of the admin who should manage this channel.", {
+    reply_markup: new InlineKeyboard().text("❌ Cancel", `manage_ch_${chId}`),
+    parse_mode: "Markdown"
+  });
+  await ctx.db.prepare("INSERT OR REPLACE INTO admin_states (admin_id, state) VALUES (?, ?)")
+    .bind(ctx.from!.id, `wait_assign_ch_admin:${chId}`).run();
 });
 
 /**

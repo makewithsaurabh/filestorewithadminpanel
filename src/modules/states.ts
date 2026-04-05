@@ -77,21 +77,34 @@ statesModule.on("message:text", async (ctx, next) => {
 
     // B. Store the record (Full schema compliance)
     console.log(`[SQL-DEBUG] Broadcast Start: msg=${msgId}, type=${contentType}`);
+    
+    // 🔍 Fetch current user count for target audience
+    const countRes = await ctx.db.prepare("SELECT COUNT(*) as c FROM users").first<{ c: number }>();
+    const totalUsers = countRes?.c || 0;
+
     const { meta } = await ctx.db.prepare(
-      "INSERT INTO broadcasts (message_id, from_chat_id, content_type, text_content, file_id, caption, status) " +
-      "VALUES (?, ?, ?, ?, ?, ?, 'pending')"
+      "INSERT INTO broadcasts (message_id, from_chat_id, content_type, text_content, file_id, caption, total_users, status) " +
+      "VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')"
     ).bind(
       Number(msgId), 
       Number(ctx.from!.id), 
       String(contentType), 
       textContent ? String(textContent) : null, 
       fileId ? String(fileId) : null, 
-      caption ? String(caption) : null
+      caption ? String(caption) : null,
+      Number(totalUsers)
     ).run();
     const bId = meta.last_row_id;
+    
+    // ✨ Send Preview to Admin
+    await ctx.api.copyMessage(ctx.from!.id, ctx.from!.id, msgId);
 
     const kb = new InlineKeyboard().text("🚀 Start", `confirm_broadcast:${bId}`).row().text("❌ Cancel", `cancel_broadcast:${bId}`);
-    await ctx.reply(`⚠️ **Ready to transmit?** (ID #${bId})\n\nForwarding this message will begin the broadcast.`, { reply_markup: kb, parse_mode: "Markdown" });
+    await ctx.reply(`✨ **Preview above.** Ready to transmit? (#${bId})\n\nThis will be sent to **${totalUsers}** active users.`, { 
+      reply_markup: kb, 
+      parse_mode: "Markdown",
+      reply_to_message_id: msgId
+    });
     await ctx.db.prepare("DELETE FROM admin_states WHERE admin_id = ?").bind(ctx.from!.id).run();
     return;
   }
@@ -191,6 +204,56 @@ statesModule.on("message:text", async (ctx, next) => {
       await ctx.db.prepare("DELETE FROM admin_states WHERE admin_id = ?").bind(ctx.from!.id).run();
     } catch (e: any) {
       await ctx.reply(`❌ **Edit Failed:** ${e.message}`);
+    }
+    return;
+  }
+
+  // 9. Broadcast Exclusion Manager (Add/Remove ID)
+  if (stateRow.state === "wait_exclude_id" || stateRow.state === "wait_unexclude_id") {
+    if (!isOwner(ctx)) return;
+    const targetId = parseInt(ctx.msg.text.trim());
+    const isAdding = stateRow.state === "wait_exclude_id";
+
+    if (isNaN(targetId)) return ctx.reply("❌ **Invalid ID.** Please send a numeric User ID.");
+
+    try {
+      if (isAdding) {
+        await ctx.db.prepare("INSERT OR IGNORE INTO broadcast_exclusions (user_id) VALUES (?)").bind(targetId).run();
+        await ctx.reply(`🚫 **User ${targetId} added to Exclusions.**`, {
+          reply_markup: new InlineKeyboard().text("🔙 Back to Manager", "broadcast_exclusions")
+        });
+      } else {
+        await ctx.db.prepare("DELETE FROM broadcast_exclusions WHERE user_id = ?").bind(targetId).run();
+        await ctx.reply(`✅ **User ${targetId} removed from Exclusions.**`, {
+          reply_markup: new InlineKeyboard().text("🔙 Back to Manager", "broadcast_exclusions")
+        });
+      }
+      await ctx.db.prepare("DELETE FROM admin_states WHERE admin_id = ?").bind(ctx.from!.id).run();
+    } catch (e: any) {
+      await ctx.reply(`❌ **Operation Failed:** ${e.message}`);
+    }
+    return;
+  }
+
+  // 10. Ghost Admin Assignment (Channel -> Admin)
+  if (stateRow.state.startsWith("wait_assign_ch_admin:")) {
+    if (!isOwner(ctx)) return;
+    const chId = stateRow.state.split(":")[1];
+    const targetUserId = parseInt(ctx.msg.text.trim());
+
+    if (isNaN(targetUserId)) return ctx.reply("❌ **Invalid ID.** Please send a numeric User ID.");
+
+    try {
+      // Update the channel owner
+      await ctx.db.prepare("UPDATE channels SET added_by = ? WHERE id = ?")
+        .bind(Number(targetUserId), String(chId)).run();
+
+      await ctx.reply(`✅ **Assignment Complete!**\n\nChannel \`${chId}\` is now managed by **${targetUserId}**.`, {
+        reply_markup: new InlineKeyboard().text("🔙 Back to Channels", "admin_channels")
+      });
+      await ctx.db.prepare("DELETE FROM admin_states WHERE admin_id = ?").bind(ctx.from!.id).run();
+    } catch (e: any) {
+      await ctx.reply(`❌ **Assignment Failed:** ${e.message}`);
     }
     return;
   }

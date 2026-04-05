@@ -495,6 +495,7 @@ ownerModule.callbackQuery("broadcast_info", async (ctx) => {
   const kb = new InlineKeyboard()
     .text("📣 New Broadcast", "broadcast_new").row()
     .text("📊 Broadcast History", "broadcast_history_0").row()
+    .text("🚫 Exclusion Manager", "broadcast_exclusions").row()
     .text("🔙 Back", "admin_main");
   await ctx.editMessageText("📣 **Broadcast Menu**\n\nManage your global transmissions and campaign logs.", { reply_markup: kb, parse_mode: "Markdown" });
 });
@@ -524,13 +525,26 @@ ownerModule.callbackQuery(/^broadcast_history_(\d+)$/, async (ctx) => {
   let text = `📊 <b>Broadcast History</b> (Page ${page + 1} | Total: ${total})\n\n`;
   const kb = new InlineKeyboard();
 
-  if (broadcasts.length === 0) text += "_No broadcasts recorded yet._";
+  if (broadcasts.length === 0) text += "<i>No broadcasts recorded yet.</i>";
   else {
     broadcasts.forEach((b: any) => {
-      const statusIcon = b.status === 'completed' ? '✅' : (b.status === 'running' ? '⏳' : '🕒');
-      text += `${statusIcon} <b>ID #${b.id}</b> (${b.status})\n`;
+      const statusIcon = b.status === 'completed' ? '✅' : (b.status === 'running' ? '📡' : '🕒');
+      const statusText = b.status.toUpperCase();
+      
+      // Calculate Stats
+      const processed = b.sent + b.failed;
+      const successRate = b.total_users > 0 ? Math.round((b.sent / b.total_users) * 100) : 0;
+      
+      // Mini Shaded Bar (10 chars for compactness)
+      const size = 10;
+      const progress = b.total_users > 0 ? Math.min(Math.floor((processed / b.total_users) * size), size) : 0;
+      const bar = "█".repeat(progress) + "▒".repeat(size - progress);
+
+      text += `<b>ID #${b.id}</b> | ${statusIcon} <b>${statusText}</b>\n`;
       text += `📅 ${new Date(b.created_at).toLocaleString()}\n`;
-      text += `🏁 Total: ${b.total_users} | ✅ Sent: ${b.sent} | ❌ Fail: ${b.failed}\n\n`;
+      text += `📶 <code>[${bar}]</code> <b>${successRate}%</b>\n`;
+      text += `✅ <code>${b.sent}</code> | 🚫 <code>${b.failed}</code> | 🏁 <code>${b.total_users}</code>\n\n`;
+      
       kb.text(`🔍 Details #${b.id}`, `broadcast_report_${b.id}`).row();
     });
   }
@@ -539,7 +553,7 @@ ownerModule.callbackQuery(/^broadcast_history_(\d+)$/, async (ctx) => {
   if (offset + limit < total) kb.text("Next ▶️", `broadcast_history_${page + 1}`);
   kb.row().text("🔙 Back", "broadcast_info");
 
-  await ctx.editMessageText(text, { reply_markup: kb, parse_mode: "Markdown" });
+  await ctx.editMessageText(text, { reply_markup: kb, parse_mode: "HTML" });
 });
 
 ownerModule.callbackQuery(/^broadcast_report_(\d+)$/, async (ctx) => {
@@ -549,15 +563,32 @@ ownerModule.callbackQuery(/^broadcast_report_(\d+)$/, async (ctx) => {
   const b = await ctx.db.prepare("SELECT * FROM broadcasts WHERE id = ?").bind(bId).first<any>();
   if (!b) return ctx.answerCallbackQuery("Not found.");
 
-  let text = `📈 **Broadcast Report #${bId}**\n\n`;
-  text += `🏁 **Target Audience:** ${b.total_users}\n`;
-  text += `✅ **Successful:** ${b.sent}\n`;
-  text += `❌ **Failed:** ${b.failed}\n`;
+  // 🎨 Generate UI Components
+  const totalProcessed = b.sent + b.failed;
+  const progressPercent = b.total_users > 0 ? Math.round((totalProcessed / b.total_users) * 100) : 0;
   
+  // High-Res Shaded Bar
+  const size = 12;
+  const progress = Math.min(Math.floor((totalProcessed / b.total_users) * size), size) || 0;
+  const bar = "█".repeat(progress) + "▒".repeat(size - progress);
+
+  let text = `📈 **Broadcast Report #${bId}**\n\n`;
+  text += `📶 \`[${bar}]\` **${progressPercent}%**\n\n`;
+  
+  text += `🏁 **Target Audience**: \`${b.total_users}\`\n`;
+  text += `✅ **Successfully Sent**: \`${b.sent}\`\n`;
+  
+  if (b.failed > 0) {
+    text += `🚫 **Blocked by User**: \`${b.blocked_count || 0}\`\n`;
+    text += `🗑️ **Inactive/Deleted**: \`${(b.deactivated_count || 0) + (b.not_found_count || 0)}\`\n`;
+    text += `❌ **Other Failures**: \`${b.failed - ((b.blocked_count || 0) + (b.deactivated_count || 0) + (b.not_found_count || 0))}\`\n`;
+  }
+
   const successRate = b.total_users > 0 ? Math.round((b.sent / b.total_users) * 100) : 0;
-  text += `📊 **Success Rate:** ${successRate}%\n\n`;
-  text += `🕒 **Created At:** ${new Date(b.created_at).toLocaleString()}\n`;
-  text += `🛰 **Status:** ${b.status.toUpperCase()}\n`;
+  text += `📊 **Global Success Rate**: \`${successRate}%\`\n\n`;
+  
+  text += `🕒 **Created At**: \`${new Date(b.created_at).toLocaleString()}\`\n`;
+  text += `🛰️ **Campaign Status**: \`${b.status.toUpperCase()}\``;
 
   const kb = new InlineKeyboard();
   
@@ -602,8 +633,6 @@ ownerModule.callbackQuery(/^retry_broadcast_(\d+)$/, async (ctx) => {
   const bId = parseInt(ctx.match[1]);
   try {
     // 1. Reset status to pending so Render engine can pick it up again
-    // Actually, we might need a specific 'retry' flag or just mark as pending.
-    // Assuming the Render engine looks for 'pending' or 'running'.
     await ctx.db.prepare("UPDATE broadcasts SET status = 'pending', sent = 0, failed = 0 WHERE id = ?").bind(bId).run();
     
     await Broadcast.startBroadcast(ctx, bId);
@@ -614,6 +643,63 @@ ownerModule.callbackQuery(/^retry_broadcast_(\d+)$/, async (ctx) => {
   } catch (e: any) {
     await ctx.answerCallbackQuery(`❌ Retry Failed: ${e.message}`);
   }
+});
+
+// --- EXCLUSION MANAGEMENT ---
+
+ownerModule.callbackQuery("broadcast_exclusions", async (ctx) => {
+  if (!isOwner(ctx)) return;
+  await ctx.answerCallbackQuery();
+  
+  const { results: excluded } = await ctx.db.prepare(
+    "SELECT be.user_id, be.added_at, u.first_name, u.username " +
+    "FROM broadcast_exclusions be " +
+    "LEFT JOIN users u ON be.user_id = u.user_id " +
+    "ORDER BY be.added_at DESC LIMIT 15"
+  ).all<any>();
+  
+  let text = "🚫 **Broadcast Exclusions**\n\nUsers in this list are **SKIPPED** during all broadcast campaigns.\n\n";
+  
+  if (excluded.length === 0) {
+    text += "_No users are currently excluded._";
+  } else {
+    excluded.forEach((u) => {
+      const name = u.first_name ? `<b>${u.first_name}</b>` : "Unknown User";
+      const username = u.username ? ` (@${u.username})` : "";
+      text += `• ${name}${username} [\`${u.user_id}\`]\n`;
+      text += `  └ Added: ${new Date(u.added_at).toLocaleDateString()}\n\n`;
+    });
+  }
+
+  const kb = new InlineKeyboard()
+    .text("➕ Add User ID", "add_exclusion_id")
+    .text("➖ Remove User ID", "rem_exclusion_id")
+    .row()
+    .text("🔙 Back", "broadcast_info");
+
+  await ctx.editMessageText(text, { reply_markup: kb, parse_mode: "HTML" });
+});
+
+ownerModule.callbackQuery("add_exclusion_id", async (ctx) => {
+  if (!isOwner(ctx)) return;
+  await ctx.answerCallbackQuery();
+  await ctx.editMessageText("🚫 **Add to Exclusions**\n\nPlease send the **User ID** of the person you want to exclude from broadcasts.", {
+    reply_markup: new InlineKeyboard().text("❌ Cancel", "broadcast_exclusions"),
+    parse_mode: "Markdown"
+  });
+  await ctx.db.prepare("INSERT OR REPLACE INTO admin_states (admin_id, state) VALUES (?, ?)")
+    .bind(ctx.from!.id, "wait_exclude_id").run();
+});
+
+ownerModule.callbackQuery("rem_exclusion_id", async (ctx) => {
+  if (!isOwner(ctx)) return;
+  await ctx.answerCallbackQuery();
+  await ctx.editMessageText("✅ **Remove from Exclusions**\n\nPlease send the **User ID** you want to remove from the exclusion list.", {
+    reply_markup: new InlineKeyboard().text("❌ Cancel", "broadcast_exclusions"),
+    parse_mode: "Markdown"
+  });
+  await ctx.db.prepare("INSERT OR REPLACE INTO admin_states (admin_id, state) VALUES (?, ?)")
+    .bind(ctx.from!.id, "wait_unexclude_id").run();
 });
 
 /**
@@ -681,8 +767,9 @@ ownerModule.callbackQuery(/^owner_users_(\d+)$/, async (ctx) => {
 ownerModule.callbackQuery(/^confirm_broadcast:(.+)$/, async (ctx) => {
   if (!isOwner(ctx)) return;
   const bId = parseInt(ctx.match[1]);
+  const statusMsgId = ctx.callbackQuery.message?.message_id;
   try {
-    await Broadcast.startBroadcast(ctx, bId);
+    await Broadcast.startBroadcast(ctx, bId, statusMsgId);
     await ctx.answerCallbackQuery("🚀 Transmission Started!");
     await ctx.editMessageText(`🚀 **Broadcast Campaign #${bId} is now RUNNING**\n\nThe transmission has been handed over to the external engine. Stats will update in real-time.`, {
       reply_markup: new InlineKeyboard().text("🔙 Back", "admin_main")
@@ -780,7 +867,7 @@ async function renderAdminMain(ctx: MyContext) {
     
   if (isOwner(ctx)) {
     kb.text("📣 Broadcast", "broadcast_info").row()
-      .text("👤 Manage Admins", "owner_admins").text("🔗 Create Link For", "create_link_for").row()
+      .text("👤 Manage Admins", "owner_admins").text("👤 Link Attribution", "link_attribution").row()
       .text("⚙️ Bot Settings", "owner_texts").text("💎 Advanced Stats", "owner_adv_stats").row()
       .text("🚫 Exclusions", "owner_exclusions").text("🔄 Set Menu", "owner_set_menu").row();
   }
@@ -789,3 +876,62 @@ async function renderAdminMain(ctx: MyContext) {
   if (ctx.callbackQuery) return ctx.editMessageText(text, { reply_markup: kb, parse_mode: "Markdown" });
   return ctx.reply(text, { reply_markup: kb, parse_mode: "Markdown" });
 }
+// --- LINK ATTRIBUTION UI (Multi-Admin Link Creation) ---
+
+ownerModule.callbackQuery("link_attribution", async (ctx) => {
+  if (!isOwner(ctx)) return;
+  await ctx.answerCallbackQuery();
+
+  const { results: admins } = await ctx.db.prepare(
+    "SELECT a.user_id, u.first_name, u.username " +
+    "FROM admins a " +
+    "LEFT JOIN users u ON a.user_id = u.user_id"
+  ).all<any>();
+
+  const currentAttr = await ctx.db.prepare("SELECT state FROM admin_states WHERE admin_id = ? AND state LIKE 'link_attr:%'")
+    .bind(ctx.from!.id).first<{ state: string }>();
+  
+  let currentName = "Yourself (Default)";
+  if (currentAttr) {
+    const targetId = currentAttr.state.split(":")[1];
+    const target = admins.find(a => a.user_id.toString() === targetId);
+    currentName = target ? `${target.first_name} [${targetId}]` : `Admin [${targetId}]`;
+  }
+
+  let text = "👤 **Link Attribution (Multi-Admin)**\n\n" +
+    "Select an admin whose FJ channels should be used for the files you upload next.\n\n" +
+    `Current Target: <b>${currentName}</b>\n\n` +
+    "<i>All links you create will now belong to the selected admin.</i>";
+
+  const kb = new InlineKeyboard();
+  
+  admins.forEach((adm) => {
+    const name = adm.first_name || `Admin ${adm.user_id}`;
+    kb.text(`👤 ${name}`, `set_link_attr_${adm.user_id}`).row();
+  });
+
+  kb.text("❌ Reset to Yourself", "clear_link_attr").row();
+  kb.text("🔙 Back", "admin_main");
+
+  await ctx.editMessageText(text, { reply_markup: kb, parse_mode: "HTML" });
+});
+
+ownerModule.callbackQuery(/^set_link_attr_(.+)$/, async (ctx) => {
+  if (!isOwner(ctx)) return;
+  const targetId = ctx.match[1];
+  
+  await ctx.db.prepare("INSERT OR REPLACE INTO admin_states (admin_id, state) VALUES (?, ?)")
+    .bind(ctx.from!.id, `link_attr:${targetId}`).run();
+
+  await ctx.answerCallbackQuery(`✅ Attribution set to ${targetId}`);
+  return ctx.callbackQuery.data = "link_attribution";
+});
+
+ownerModule.callbackQuery("clear_link_attr", async (ctx) => {
+  if (!isOwner(ctx)) return;
+  await ctx.db.prepare("DELETE FROM admin_states WHERE admin_id = ? AND state LIKE 'link_attr:%'")
+    .bind(ctx.from!.id).run();
+
+  await ctx.answerCallbackQuery("✅ Reset to Default");
+  return ctx.callbackQuery.data = "link_attribution";
+});

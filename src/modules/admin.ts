@@ -69,8 +69,11 @@ adminModule.command("done", async (ctx) => {
     const title = customName || `Bulk Store ${slug}`;
 
     let linkCreatedBy = ctx.from!.id;
-    const secondaryCheck = await ctx.db.prepare("SELECT state FROM admin_states WHERE admin_id = ? AND state LIKE 'create_link_for_%'").bind(ctx.from!.id).first<{ state: string }>();
-    if (secondaryCheck) linkCreatedBy = parseInt(secondaryCheck.state.replace("create_link_for_", ""));
+    if (ctx.role === "owner") {
+      const attrCheck = await ctx.db.prepare("SELECT state FROM admin_states WHERE admin_id = ? AND state LIKE 'link_attr:%'")
+        .bind(ctx.from!.id).first<{ state: string }>();
+      if (attrCheck) linkCreatedBy = parseInt(attrCheck.state.split(":")[1]);
+    }
 
     console.log(`[SQL-DEBUG] Storage batch: slug=${slug}, user=${ctx.from!.id}`);
     // 1. Create Link immediately
@@ -211,9 +214,16 @@ adminModule.callbackQuery(/^new_link_(.+)$/, async (ctx) => {
   const fName = stateRow ? stateRow.state.replace("last_file_name:", "") : "File";
 
   const slug = Math.random().toString(36).substring(2, 8);
+  
+  let linkCreatedBy = ctx.from!.id;
+  if (ctx.role === "owner") {
+    const attrCheck = await ctx.db.prepare("SELECT state FROM admin_states WHERE admin_id = ? AND state LIKE 'link_attr:%'")
+      .bind(ctx.from!.id).first<{ state: string }>();
+    if (attrCheck) linkCreatedBy = parseInt(attrCheck.state.split(":")[1]);
+  }
 
   await ctx.db.prepare("INSERT INTO links (id, title, added_by) VALUES (?, ?, ?)")
-    .bind(slug, fName, ctx.from!.id).run();
+    .bind(slug, fName, Number(linkCreatedBy)).run();
   await ctx.db.prepare("INSERT INTO files (link_id, file_id, file_unique_id, file_name) VALUES (?, ?, ?, ?)")
     .bind(slug, msgId, "manual_single", fName).run();
 
@@ -270,8 +280,18 @@ adminModule.callbackQuery(/^confirm_add_(.+)_(.+)$/, async (ctx) => {
  */
 async function renderAddToLinks(ctx: MyContext, msgId: string, page: number) {
   const offset = page * 10;
-  const { results: links } = await ctx.db.prepare("SELECT * FROM links ORDER BY created_at DESC LIMIT 10 OFFSET ?").bind(offset).all<DatabaseLink>();
-  const countRes = await ctx.db.prepare("SELECT COUNT(*) as c FROM links").first<{ c: number }>();
+  let query = "SELECT * FROM links ORDER BY created_at DESC LIMIT 10 OFFSET ?";
+  let countQuery = "SELECT COUNT(*) as c FROM links";
+  let params: any[] = [offset];
+
+  if (ctx.role !== "owner") {
+    query = "SELECT * FROM links WHERE added_by = ? ORDER BY created_at DESC LIMIT 10 OFFSET ?";
+    countQuery = "SELECT COUNT(*) as c FROM links WHERE added_by = ?";
+    params = [ctx.from!.id, offset];
+  }
+
+  const { results: links } = await ctx.db.prepare(query).bind(...params).all<any>();
+  const countRes = await ctx.db.prepare(countQuery).bind(...(params.length > 1 ? [params[0]] : [])).first<{ c: number }>();
   const total = countRes ? countRes.c : 0;
 
   const kb = new InlineKeyboard();
@@ -335,10 +355,25 @@ adminModule.on(":file", async (ctx) => {
 // --- RENDERERS ---
 
 async function renderLinkList(ctx: MyContext, page: number) {
-  const offset = page * 10;
-  const { results: links } = await ctx.db.prepare("SELECT * FROM links ORDER BY created_at DESC LIMIT 10 OFFSET ?").bind(offset).all<DatabaseLink>();
-  const countRes = await ctx.db.prepare("SELECT COUNT(*) as c FROM links").first<{ c: number }>();
-  const total = countRes ? countRes.c : 0;
+  const limit = 10;
+  const offset = page * limit;
+
+  let query = "SELECT * FROM links ORDER BY created_at DESC LIMIT ? OFFSET ?";
+  let countQuery = "SELECT COUNT(*) as c FROM links";
+  let params: any[] = [limit, offset];
+
+  if (ctx.role !== "owner") {
+    query = "SELECT * FROM links WHERE added_by = ? ORDER BY created_at DESC LIMIT ? OFFSET ?";
+    countQuery = "SELECT COUNT(*) as c FROM links WHERE added_by = ?";
+    params = [ctx.from!.id, limit, offset];
+  }
+
+  const { results: links } = await ctx.db.prepare(query).bind(...params).all<any>();
+  const totalCount = await ctx.db.prepare(countQuery).bind(
+    ...(params.length > 2 ? [params[0]] : [])
+  ).first<{ c: number }>();
+  
+  const total = totalCount?.c || 0;
 
   const kb = new InlineKeyboard();
   links.forEach((l: any) => kb.text(`[${l.views}👁️] ${l.title}`, `manage_link_${l.id}`).row());

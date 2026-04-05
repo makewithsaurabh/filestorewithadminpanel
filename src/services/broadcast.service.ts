@@ -13,7 +13,7 @@ import { MyContext } from "../types";
  * Initializes a new broadcast campaign. 
  * Triggers the remote Render engine via HTTP.
  */
-export async function startBroadcast(ctx: MyContext, broadcastId: number) {
+export async function startBroadcast(ctx: MyContext, broadcastId: number, statusMsgId?: number) {
   const bc = await ctx.db.prepare("SELECT * FROM broadcasts WHERE id = ?").bind(broadcastId).first<any>();
   if (!bc) throw new Error("Broadcast not found.");
 
@@ -21,23 +21,20 @@ export async function startBroadcast(ctx: MyContext, broadcastId: number) {
   await ctx.db.prepare("UPDATE broadcasts SET status = 'running' WHERE id = ?").bind(broadcastId).run();
 
   // 2. Trigger External Rendering Engine (via Render)
-  /**
-   * 📡 Remote Bridge
-   * This is where the Worker hands off the heavy lifting to the persistent server.
-   */
   if (ctx.config.RENDER_URL) {
     try {
       const resp = await fetch(`${ctx.config.RENDER_URL}/broadcast`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'X-Admin-Key': ctx.config.ADMIN_API_KEY
+          'X-API-Key': ctx.config.ADMIN_API_KEY
         },
         body: JSON.stringify({
           broadcast_id: broadcastId,
           message_id: bc.message_id,
           from_chat_id: bc.from_chat_id,
-          admin_uid: ctx.from!.id
+          admin_id: ctx.from!.id,
+          status_msg_id: statusMsgId || null
         })
       });
       return await resp.json();

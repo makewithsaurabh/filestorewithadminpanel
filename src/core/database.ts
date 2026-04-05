@@ -53,7 +53,7 @@ export async function trackUserActivity(db: D1Database, userId: number, username
   try {
     console.log(`[SQL-DEBUG] trackActivity: ID=${userId}, User=${username}`);
     // 1. Update Core User Profile
-    await db.prepare(
+    const res = await db.prepare(
       "INSERT INTO users (user_id, username, first_name, last_active_at) " +
       "VALUES (?, ?, ?, CURRENT_TIMESTAMP) " +
       "ON CONFLICT(user_id) DO UPDATE SET last_active_at = CURRENT_TIMESTAMP, username = ?, first_name = ?"
@@ -66,6 +66,7 @@ export async function trackUserActivity(db: D1Database, userId: number, username
         String(firstName || "User")
       )
       .run();
+    console.log(`[SQL-DEBUG] Tracked User ${userId}. Changes: ${res.meta.changes}`);
   } catch (e) {
     console.error("Activity tracking failed:", e);
   }

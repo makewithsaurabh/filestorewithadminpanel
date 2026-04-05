@@ -2,14 +2,16 @@ name = "file-store-bot"
 main = "src/index.ts"
 compatibility_date = "2024-03-31"
 
+# 🛡️ SECURITY WARNING: Do NOT push real tokens to a public repository!
+# Use 'wrangler secret put <NAME>' or the Cloudflare Dashboard to manage secrets.
+
 [vars]
 STORAGE_CHANNEL_ID = "YOUR_STORAGE_CHANNEL_ID"
 BACKUP_STORAGE_ID = "YOUR_BACKUP_STORAGE_ID"
-ADMIN_UID = "YOUR_ADMIN_TELEGRAM_ID"
-ADMIN_API_KEY = "YOUR_CUSTOM_ADMIN_KEY"
-RENDER_URL = "https://your-broadcast-engine.onrender.com"
-# Note: BOT_TOKEN must be set via 'wrangler secret put BOT_TOKEN'
-# BOT_TOKEN = "HIDDEN"
+ADMIN_UID = "YOUR_ADMIN_USER_ID"
+ADMIN_API_KEY = "YOUR_ADMIN_API_KEY"
+RENDER_URL = "https://your-app.onrender.com"
+BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN_HERE"
 
 [[d1_databases]]
 binding = "DB"
