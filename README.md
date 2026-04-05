@@ -116,16 +116,58 @@ The bot uses a relational SQLite database (D1) with the following key tables:
 
 ---
 
-## 🔧 Deployment
+## 🚀 Step-by-Step Deployment Guide
 
-1.  **Environment Variables**:
-    *   `BOT_TOKEN`: Your Telegram Bot API token.
-    *   `DB`: Your Cloudflare D1 Database binding.
-    *   `STORAGE_CHANNEL_ID`: The ID of your private file storage channel.
-    *   `ADMIN_UID`: The ID of the bot creator (Root Owner).
-2.  **Command**: `npx wrangler deploy`
-3.  **Init**: Send `/init` to the bot after deployment to set up the specialized Admin/User menus.
+Follow these steps to deploy your own instance of the modular FileStore bot:
+
+### 1. Prerequisites
+*   Node.js (v18 or higher)
+*   A Cloudflare Account
+*   A Telegram Bot Token (from [@BotFather](https://t.me/BotFather))
+
+### 2. Initial Setup
+Clone the repository and install dependencies:
+```bash
+git clone https://github.com/makewithsaurabh/filestorewithadminpanel
+cd filestorewithadminpanel
+npm install
+```
+
+### 3. Database Initialization
+1.  Authenticate with Cloudflare:
+    ```bash
+    npx wrangler login
+    ```
+2.  Create your D1 Database:
+    ```bash
+    npx wrangler d1 create file_store_db
+    ```
+    *Note: Copy the `database_id` from the output and update it in your `wrangler.toml`.*
+
+3.  Apply the Database Schema:
+    ```bash
+    npx wrangler d1 execute file_store_db --remote --file=./schema.sql
+    ```
+
+### 4. Configuration (Secrets)
+Do NOT put your bot token directly in `wrangler.toml`. Instead, use Cloudflare Secrets for security:
+```bash
+npx wrangler secret put BOT_TOKEN
+# Paste your bot token when prompted
+```
+
+Update the public variables in `wrangler.toml`:
+*   `STORAGE_CHANNEL_ID`: Your private channel ID.
+*   `ADMIN_UID`: Your numerical Telegram ID.
+*   `ADMIN_API_KEY`: A custom key for admin verification.
+
+### 5. Deploy & Finalize
+1.  Deploy to Cloudflare Workers:
+    ```bash
+    npm run deploy
+    ```
+2.  **Initialize Menus**: Send the `/init` command to your bot on Telegram to set up the specialized Admin and User command menus.
 
 ---
-> [!NOTE]
+> [!NOTE]  
 > This bot is built for the **V12 Engine** architecture, focusing on background processing and D1 performance. 🚀🦾
