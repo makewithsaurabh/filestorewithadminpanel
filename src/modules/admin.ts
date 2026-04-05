@@ -78,7 +78,7 @@ adminModule.command("done", async (ctx) => {
 
     for (const t of temps) {
       statements.push(ctx.db.prepare("INSERT INTO files (link_id, file_id, file_unique_id, file_name) VALUES (?, ?, ?, ?)").bind(slug, t.file_id, "bulk", t.file_name));
-      statements.push(ctx.db.prepare("INSERT INTO storage_logs (admin_id, admin_name, file_id, file_name) VALUES (?, ?, ?, ?)").bind(linkCreatedBy, ctx.from!.username || ctx.from!.first_name, t.file_id, t.file_name));
+      statements.push(ctx.db.prepare("INSERT INTO storage_logs (admin_id, admin_name, file_id, file_name, link_id) VALUES (?, ?, ?, ?, ?)").bind(linkCreatedBy, ctx.from!.username || ctx.from!.first_name, t.file_id, t.file_name, slug));
     }
 
     statements.push(ctx.db.prepare("DELETE FROM temp_bulk_files WHERE admin_id = ?").bind(ctx.from!.id));

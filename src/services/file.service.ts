@@ -75,8 +75,8 @@ export async function serveFilesToUser(ctx: MyContext, payload: string) {
               }
 
               statements.push(ctx.db.prepare("UPDATE files SET downloads = downloads + 1 WHERE id = ?").bind(file.id));
-              statements.push(ctx.db.prepare("INSERT INTO download_logs (user_id, user_name, file_id, file_name) VALUES (?, ?, ?, ?)")
-                .bind(ctx.from!.id, ctx.from!.username || ctx.from!.first_name, file.file_id, file.file_name || "File"));
+              statements.push(ctx.db.prepare("INSERT INTO download_logs (user_id, user_name, file_id, file_name, link_id) VALUES (?, ?, ?, ?, ?)")
+                .bind(ctx.from!.id, ctx.from!.username || ctx.from!.first_name, file.file_id, file.file_name || "File", payload));
 
               if (statusMsgId && (i + 1) % 5 === 0) {
                 await ctx.api.editMessageText(ctx.from!.id, statusMsgId, `${statusBase} ${i + 1}/${files.length}`, { parse_mode: "Markdown" }).catch(() => {});

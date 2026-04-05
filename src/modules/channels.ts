@@ -174,7 +174,8 @@ async function renderChannelList(ctx: MyContext) {
     `;
     params = [ctx.from!.id];
   }
-  const { results: channels } = await ctx.db.prepare(query).bind(...params).all<any>();
+  const stmt = ctx.db.prepare(query);
+  const { results: channels } = await (params.length > 0 ? stmt.bind(...params) : stmt).all<any>();
   let text = "📢 <b>Required Channels</b>\n\n";
   const kb = new InlineKeyboard();
   if (channels.length === 0) text += "<i>No channels found.</i>";
