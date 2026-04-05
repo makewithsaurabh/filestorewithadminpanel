@@ -69,7 +69,7 @@ ownerModule.command("block", async (ctx) => {
   if (! isAdmin(ctx)) return;
   const id = parseInt(ctx.match);
   if (isNaN(id)) return ctx.reply("❌ Usage: `/block <user_id>`");
-  await ctx.db.prepare("INSERT OR REPLACE INTO blocked_users (user_id) VALUES (?, ?)").bind(id, "Blocked by admin").run();
+  await ctx.db.prepare("INSERT OR REPLACE INTO blocked_users (user_id, reason) VALUES (?, ?)").bind(id, "Blocked by admin").run();
   await ctx.reply(`🚫 User \`${id}\` blocked.`);
 });
 
