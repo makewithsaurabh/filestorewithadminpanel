@@ -15,7 +15,8 @@ export const Sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, 
  * Retrieves a setting value from the database with a fallback.
  */
 export async function getSetting(db: D1Database, key: string, defaultValue: string): Promise<string> {
-  const s = await db.prepare("SELECT value FROM settings WHERE key = ?").bind(key).first<DatabaseSetting>();
+  console.log(`[SQL-DEBUG] getSetting: ${key}`);
+  const s = await db.prepare("SELECT value FROM settings WHERE key = ?").bind(String(key)).first<DatabaseSetting>();
   return s ? s.value : defaultValue;
 }
 
@@ -23,7 +24,8 @@ export async function getSetting(db: D1Database, key: string, defaultValue: stri
  * Checks if a user is blocked in the database.
  */
 export async function isUserBlocked(db: D1Database, userId: number): Promise<boolean> {
-  const isBlocked = await db.prepare("SELECT user_id FROM blocked_users WHERE user_id = ?").bind(userId).first();
+  console.log(`[SQL-DEBUG] isUserBlocked: ${userId}`);
+  const isBlocked = await db.prepare("SELECT user_id FROM blocked_users WHERE user_id = ?").bind(Number(userId)).first();
   return !!isBlocked;
 }
 
@@ -38,7 +40,8 @@ export async function getUserRole(db: D1Database, userId: number, adminUid: stri
     return "owner";
   }
 
-  const admin = await db.prepare("SELECT role FROM admins WHERE user_id = ?").bind(userId).first<DatabaseAdmin>();
+  console.log(`[SQL-DEBUG] getUserRole Check: ${userId}`);
+  const admin = await db.prepare("SELECT role FROM admins WHERE user_id = ?").bind(Number(userId)).first<DatabaseAdmin>();
   return admin ? admin.role : "user";
 }
 
@@ -47,8 +50,8 @@ export async function getUserRole(db: D1Database, userId: number, adminUid: stri
  * Logs daily unique interactions to the 'user_activity' table for DAU/MAU metrics.
  */
 export async function trackUserActivity(db: D1Database, userId: number, username: string | null, firstName: string): Promise<void> {
-  const today = new Date().toISOString().split('T')[0];
   try {
+    console.log(`[SQL-DEBUG] trackActivity: ID=${userId}, User=${username}`);
     // 1. Update Core User Profile
     await db.prepare(
       "INSERT INTO users (user_id, username, first_name, last_active_at) " +

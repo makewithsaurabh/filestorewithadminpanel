@@ -49,6 +49,7 @@ export async function getMissingChannels(ctx: MyContext, payload?: string): Prom
        * We check if the user has already submitted a 'Request to Join'. 
        * If they have, we treat them as joined to prevent delivery friction.
        */
+      console.log(`[SQL-DEBUG] Checking Join REQ: user=${ctx.from!.id}, chId=${channel.id}`);
       const exists = await ctx.db.prepare("SELECT user_id FROM join_requests WHERE user_id = ? AND channel_id = ?")
         .bind(Number(ctx.from!.id), String(channel.id)).first();
       

@@ -55,8 +55,39 @@ statesModule.on("message:text", async (ctx, next) => {
     if (!isOwner(ctx)) return;
     const msgId = ctx.msg.message_id;
 
-    // We store the message and ask for confirmation
-    const { meta } = await ctx.db.prepare("INSERT INTO broadcasts (message_id, from_chat_id, status) VALUES (?, ?, 'pending')").bind(msgId, ctx.from!.id).run();
+    // A. Extract Preview Metadata (Exact Parity with oldbotlogic)
+    let contentType = 'text';
+    let textContent = ctx.msg.text || null;
+    let fileId = null;
+    let caption = ctx.msg.caption || null;
+
+    if (ctx.msg.photo) {
+      contentType = 'photo';
+      fileId = ctx.msg.photo[ctx.msg.photo.length - 1].file_id;
+    } else if (ctx.msg.video) {
+      contentType = 'video';
+      fileId = ctx.msg.video.file_id;
+    } else if (ctx.msg.document) {
+      contentType = 'document';
+      fileId = ctx.msg.document.file_id;
+    } else if (ctx.msg.animation) {
+      contentType = 'animation';
+      fileId = ctx.msg.animation.file_id;
+    }
+
+    // B. Store the record (Full schema compliance)
+    console.log(`[SQL-DEBUG] Broadcast Start: msg=${msgId}, type=${contentType}`);
+    const { meta } = await ctx.db.prepare(
+      "INSERT INTO broadcasts (message_id, from_chat_id, content_type, text_content, file_id, caption, status) " +
+      "VALUES (?, ?, ?, ?, ?, ?, 'pending')"
+    ).bind(
+      Number(msgId), 
+      Number(ctx.from!.id), 
+      String(contentType), 
+      textContent ? String(textContent) : null, 
+      fileId ? String(fileId) : null, 
+      caption ? String(caption) : null
+    ).run();
     const bId = meta.last_row_id;
 
     const kb = new InlineKeyboard().text("🚀 Start", `confirm_broadcast:${bId}`).row().text("❌ Cancel", `cancel_broadcast:${bId}`);
@@ -130,7 +161,8 @@ statesModule.on("message:text", async (ctx, next) => {
 
     try {
       const sent = await ctx.api.copyMessage(chId, ctx.from!.id, ctx.msg.message_id);
-      await ctx.db.prepare("INSERT INTO channel_posts (channel_id, message_id) VALUES (?, ?)").bind(chId, sent.message_id).run();
+      const preview = (ctx.msg.text || ctx.msg.caption || "Media/Post").substring(0, 50);
+      await ctx.db.prepare("INSERT INTO channel_posts (channel_id, message_id, text_preview) VALUES (?, ?, ?)").bind(String(chId), Number(sent.message_id), String(preview)).run();
       await ctx.reply(`✅ **Posted successfully!** (Message ID: \`${sent.message_id}\`)`, {
         reply_markup: new InlineKeyboard().text("🔙 Back", `manage_ch_${chId}`),
       });

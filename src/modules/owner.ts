@@ -37,9 +37,23 @@ ownerModule.command("addadmin", async (ctx) => {
   const parts = ctx.match.split(" ");
   if (parts.length < 1) return ctx.reply("Usage: `/addadmin <id> [admin|owner]`");
   const id = parseInt(parts[0]);
+  if (isNaN(id)) return ctx.reply("❌ Invalid User ID.");
+  
   const role = (parts[1] === "owner") ? "owner" : "admin";
-  await ctx.db.prepare("INSERT OR REPLACE INTO admins (user_id, role) VALUES (?, ?)").bind(id, role).run();
-  await ctx.reply(`✅ User \`${id}\` promoted to \`${role}\`!`, { parse_mode: "Markdown" });
+  await ctx.db.prepare("INSERT OR REPLACE INTO admins (user_id, role) VALUES (?, ?)").bind(Number(id), String(role)).run();
+  
+  // 🔄 Proactive Menu Sync
+  const adminCommands = [
+    { command: "start", description: "Start / Access files" },
+    { command: "about", description: "About the bot" },
+    { command: "admin", description: "Open Dashboard" },
+    { command: "store", description: "Store Single File" },
+    { command: "bulk", description: "Start Bulk Upload" },
+    { command: "help", description: "Admin Help" },
+  ];
+  await ctx.api.setMyCommands(adminCommands, { scope: { type: "chat", chat_id: id } }).catch(() => {});
+
+  await ctx.reply(`✅ User \`${id}\` promoted to \`${role}\`!\n\n*Command menu synchronized.*`, { parse_mode: "Markdown" });
 });
 
 // 4. /exclude, /fj_exclude, /fj_include - Exclusions
@@ -199,13 +213,18 @@ ownerModule.callbackQuery("add_adm_info", async (ctx) => {
 
 ownerModule.callbackQuery(/^rev_adm_(.+)$/, async (ctx) => {
   if (!isOwner(ctx)) return;
-  const targetId = ctx.match[1];
+  const targetId = Number(ctx.match[1]);
   
-  if (targetId === ctx.config.ADMIN_UID) {
+  if (targetId.toString() === ctx.config.ADMIN_UID) {
     return ctx.answerCallbackQuery("❌ Cannot revoke root owner!");
   }
 
   await ctx.db.prepare("DELETE FROM admins WHERE user_id = ?").bind(targetId).run();
+  
+  // 🔄 Proactive Menu Revocation 
+  // This clears the specific chat scope commands, reverting them to 'default'.
+  await ctx.api.deleteMyCommands({ scope: { type: "chat", chat_id: targetId } }).catch(() => {});
+
   await ctx.answerCallbackQuery("✅ Staff rights revoked.");
   return renderOwnerAdmins(ctx);
 });

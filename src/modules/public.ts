@@ -119,11 +119,14 @@ publicModule.callbackQuery(/^verify_join(_(.*))?$/, async (ctx) => {
 // 5. Chat Join Request Event
 publicModule.on("chat_join_request", async (ctx) => {
   try {
+    console.log(`[SQL-DEBUG] Join Request: user=${ctx.from.id}, chat=${ctx.chat.id}`);
     // We register the request in the DB but DO NOT send a DM confirmation (user's request).
     // Instead, they will get a toast when they click "Verify Join" in the main bot.
     await ctx.db.prepare("INSERT OR REPLACE INTO join_requests (user_id, channel_id) VALUES (?, ?)")
-      .bind(ctx.from.id, ctx.chat.id.toString()).run();
-  } catch (e) { console.error("Join Request Log Error:", e); }
+      .bind(Number(ctx.from.id), String(ctx.chat.id)).run();
+  } catch (e) { 
+    console.error("Join Request Log Error:", e); 
+  }
 });
 
 // --- HELPER FUNCTIONS ---

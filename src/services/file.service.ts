@@ -10,28 +10,14 @@ import { GrammyError } from "grammy";
 
 export async function serveFilesToUser(ctx: MyContext, payload: string) {
   try {
-    // 1. Concurrency Lock & Self-Healing (v2.2 Stable)
-    const now = Date.now();
-    try {
-      // Aggressive cleanup of stale locks for this user (older than 5 mins)
-      await ctx.db.prepare("DELETE FROM serving_locks WHERE user_id = ? AND created_at < ?")
-        .bind(ctx.from!.id, now - 300000).run();
-
-      // Try to acquire new lock
-      await ctx.db.prepare("INSERT INTO serving_locks (user_id, link_id, created_at) VALUES (?, ?, ?)")
-        .bind(ctx.from!.id, payload, now).run();
-    } catch (e: any) {
-      if (e.message?.includes("UNIQUE constraint failed")) {
-        return ctx.reply("⚠️ **Delivery in Progress!**\nYour files are already being sent. Please wait for the current batch to finish.", { parse_mode: "Markdown" });
-      }
-    }
-
-    const link = await ctx.db.prepare("SELECT * FROM links WHERE id = ?").bind(payload).first<DatabaseLink>();
+    console.log(`[SQL-DEBUG] Fetching link: ${payload}`);
+    const link = await ctx.db.prepare("SELECT * FROM links WHERE id = ?").bind(String(payload)).first<DatabaseLink>();
     if (!link) {
       return ctx.reply("❌ **Link Expired or Invalid!**\nPlease generate a new link.", { parse_mode: "Markdown" });
     }
 
-    const { results: files } = await ctx.db.prepare("SELECT * FROM files WHERE link_id = ? ORDER BY id ASC").all<DatabaseFile>();
+    console.log(`[SQL-DEBUG] Fetching files for link: ${payload}`);
+    const { results: files } = await ctx.db.prepare("SELECT * FROM files WHERE link_id = ? ORDER BY id ASC").bind(String(payload)).all<DatabaseFile>();
     if (!files || files.length === 0) {
       return ctx.reply("📁 This store is currently empty.");
     }
@@ -56,6 +42,7 @@ export async function serveFilesToUser(ctx: MyContext, payload: string) {
 
       try {
         // 1. Increment Link Views immediately (Sequential Fix)
+        console.log(`[SQL-DEBUG] Updating views: ${payload}`);
         await ctx.db.prepare("UPDATE links SET views = views + 1 WHERE id = ?").bind(String(payload)).run();
 
         for (let i = 0; i < files.length; i++) {
@@ -69,6 +56,7 @@ export async function serveFilesToUser(ctx: MyContext, payload: string) {
               sent = true;
 
               // 2. Sequential Activity Logging (Guaranteed Binding Count)
+              console.log(`[SQL-DEBUG] Logging download: ${file.file_id}`);
               await ctx.db.prepare("INSERT INTO download_logs (user_id, user_name, file_id, file_name, link_id) VALUES (?, ?, ?, ?, ?)")
                 .bind(
                   Number(ctx.from!.id),
@@ -106,7 +94,6 @@ export async function serveFilesToUser(ctx: MyContext, payload: string) {
       } catch (err) {
         console.error("Critical error in serving:", err);
       } finally {
-        await clearLock(ctx, payload);
         if (statusMsgId) await ctx.api.deleteMessage(ctx.from!.id, statusMsgId).catch(() => { });
       }
     };
@@ -117,11 +104,6 @@ export async function serveFilesToUser(ctx: MyContext, payload: string) {
       await doServing();
     }
   } catch (err: any) {
-    /**
-     * 🛡️ Final Lock Cleanup
-     * We ensure the user is unlocked if any error occurs during validation.
-     */
-    await clearLock(ctx, payload);
     throw err; // Re-throw for Global Error Boundary
   }
 }
@@ -165,7 +147,3 @@ export async function processAutoDeletes(db: D1Database, api: any) {
   console.log(`[Auto-Delete] Processed ${idsToDelete.length} records.`);
 }
 
-async function clearLock(ctx: MyContext, payload: string) {
-  await ctx.db.prepare("DELETE FROM serving_locks WHERE user_id = ? AND link_id = ?")
-    .bind(ctx.from!.id, payload).run().catch(() => { });
-}

@@ -72,11 +72,13 @@ adminModule.command("done", async (ctx) => {
     const secondaryCheck = await ctx.db.prepare("SELECT state FROM admin_states WHERE admin_id = ? AND state LIKE 'create_link_for_%'").bind(ctx.from!.id).first<{ state: string }>();
     if (secondaryCheck) linkCreatedBy = parseInt(secondaryCheck.state.replace("create_link_for_", ""));
 
+    console.log(`[SQL-DEBUG] Storage batch: slug=${slug}, user=${ctx.from!.id}`);
     // 1. Create Link immediately
     await ctx.db.prepare("INSERT INTO links (id, title, added_by) VALUES (?, ?, ?)")
       .bind(String(slug), String(title), Number(linkCreatedBy)).run();
 
       for (const t of temps) {
+        console.log(`[SQL-DEBUG] Storing file: ${t.file_id}`);
         // 2. Sequential File Record
         await ctx.db.prepare("INSERT INTO files (link_id, file_id, file_unique_id, file_name) VALUES (?, ?, ?, ?)")
           .bind(String(slug), String(t.file_id), "bulk", String(t.file_name || "File")).run();

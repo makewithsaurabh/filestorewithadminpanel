@@ -172,10 +172,11 @@ async function renderChannelList(ctx: MyContext) {
       WHERE c.added_by = ? 
       ORDER BY c.position ASC, c.id ASC
     `;
-    params = [ctx.from!.id];
+    params = [Number(ctx.from!.id)];
   }
-  const stmt = ctx.db.prepare(query);
-  const { results: channels } = await (params.length > 0 ? stmt.bind(...params) : stmt).all<any>();
+  console.log(`[SQL-DEBUG] Listing Channels: params=${JSON.stringify(params)}`);
+  const queryObj = ctx.db.prepare(query);
+  const { results: channels } = await (params.length > 0 ? queryObj.bind(...params) : queryObj).all<any>();
   let text = "📢 <b>Required Channels</b>\n\n";
   const kb = new InlineKeyboard();
   if (channels.length === 0) text += "<i>No channels found.</i>";
@@ -190,7 +191,7 @@ async function renderChannelList(ctx: MyContext) {
       } else {
         text += `\n`;
       }
-      
+
       kb.text(`${i + 1}️⃣`, `manage_ch_${ch.id}`);
       if ((i + 1) % 4 === 0) kb.row();
     });
@@ -218,7 +219,7 @@ channelsModule.callbackQuery("add_channel_info", async (ctx) => {
     "<b>Alternative detection methods:</b>\n" +
     "• Forward any message from your channel here.\n" +
     "• Send the Channel ID (e.g. <code>-100...</code>).\n\n" +
-    "<i>The bot will automatically detect the new channel and ask for the Join mode.</i>", 
+    "<i>The bot will automatically detect the new channel and ask for the Join mode.</i>",
     { reply_markup: kb, parse_mode: "HTML" }
   );
 });
@@ -331,15 +332,15 @@ channelsModule.callbackQuery(/^ch_admins_(.+)$/, async (ctx) => {
   try {
     const admins = await ctx.api.getChatAdministrators(chId);
     let text = `👮 **Staff Audit:** (\`${chId}\`)\n\n`;
-    
+
     admins.forEach(adm => {
       const user = adm.user;
       const name = esc(user.first_name || "User");
       const role = (adm.status === "creator") ? "👑 Owner" : "🛡️ Admin";
-      
+
       text += `👤 **[${name}](tg://user?id=${user.id})**\n`;
       text += `Role: **${role}**\n`;
-      
+
       if (adm.status === "creator") {
         text += `Full Permissions ✅\n`;
       } else {
@@ -380,8 +381,8 @@ channelsModule.callbackQuery(/^ch_join_stats_(.+)_(\d+)$/, async (ctx) => {
       const idx = offset + i + 1;
       const name = esc(j.first_name || "User");
       const username = j.username ? ` (@${esc(j.username)})` : "";
-      const date = new Date(j.requested_at).toLocaleDateString('en-GB', { 
-        day: '2-digit', month: '2-digit', year: 'numeric' 
+      const date = new Date(j.requested_at).toLocaleDateString('en-GB', {
+        day: '2-digit', month: '2-digit', year: 'numeric'
       });
       text += `<b>${idx}.</b> <a href="tg://user?id=${j.user_id}">${name}</a>${username}\n`;
       text += `└─ 🕒 <code>${date}</code>\n\n`;
@@ -392,8 +393,8 @@ channelsModule.callbackQuery(/^ch_join_stats_(.+)_(\d+)$/, async (ctx) => {
   const navRow = [];
   if (page > 0) navRow.push(kb.text("◀️ Prev", `ch_join_stats_${chId}_${page - 1}`));
   if (offset + limit < total) navRow.push(kb.text("Next ▶️", `ch_join_stats_${chId}_${page + 1}`));
-  
-  if (navRow.length > 0) kb.row(); 
+
+  if (navRow.length > 0) kb.row();
   kb.text("🔙 Back", `manage_ch_${chId}`);
 
   await ctx.editMessageText(text, { reply_markup: kb, parse_mode: "HTML" });
