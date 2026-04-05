@@ -1,0 +1,20 @@
+name = "file-store-bot"
+main = "src/index.ts"
+compatibility_date = "2024-03-31"
+
+[vars]
+STORAGE_CHANNEL_ID = "-1003841646501"
+BACKUP_STORAGE_ID = "-1002076298756"
+ADMIN_UID = "5948619751"
+ADMIN_API_KEY = "100rav meena"
+RENDER_URL = "https://broadcastingbot.onrender.com"
+# Note: BOT_TOKEN is assumed to be a secret in Cloudflare (or pass here if needed)
+BOT_TOKEN = "8234849305:AAHawEKZpcvw1_0aCUdNnW0_u1u9saFdzog"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "DB"
+database_id = "91a716f2-f082-43da-ba5c-0f0e71b979c2"
+
+[triggers]
+crons = ["*/5 * * * *"]

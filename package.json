@@ -1,0 +1,25 @@
+{
+  "name": "file-store-bot-worker",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker - Telegram FileStore Bot",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:init": "wrangler d1 execute file_store_db --local --file=./schema.sql",
+    "db:remote": "wrangler d1 execute file_store_db --remote --file=./schema.sql"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "axios": "^1.14.0",
+    "grammy": "^1.41.1",
+    "hono": "^4.12.9"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260331.1",
+    "wrangler": "^4.80.0"
+  }
+}
