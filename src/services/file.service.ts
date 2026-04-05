@@ -84,7 +84,7 @@ export async function serveFilesToUser(ctx: MyContext, payload: string) {
               // 4. Sequential Auto-Delete Handler
               if (deleteMs > 0 && msg?.message_id) {
                 await ctx.db.prepare("INSERT INTO auto_deletes (chat_id, message_id, delete_at) VALUES (?, ?, ?)")
-                  .bind(Number(ctx.from!.id), Number(msg.message_id), Date.now() + deleteMs).run();
+                  .bind(Number(ctx.from!.id), Number(msg.message_id), Number(Date.now() + deleteMs)).run();
               }
 
               if (statusMsgId && (i + 1) % 5 === 0) {

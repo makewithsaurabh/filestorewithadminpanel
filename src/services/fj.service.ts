@@ -17,7 +17,7 @@ export async function getMissingChannels(ctx: MyContext, payload?: string): Prom
 
   // 2. FJ Whitelist Bypass
   try {
-    const isExcluded = await ctx.db.prepare("SELECT user_id FROM fj_exclusions WHERE user_id = ?").bind(ctx.from!.id).first();
+    const isExcluded = await ctx.db.prepare("SELECT user_id FROM fj_exclusions WHERE user_id = ?").bind(Number(ctx.from!.id)).first();
     if (isExcluded) return [];
   } catch (e) { }
 
@@ -28,7 +28,7 @@ export async function getMissingChannels(ctx: MyContext, payload?: string): Prom
   let targetChannels: DatabaseChannel[] = [];
   if (payload) {
     // Check for link-specific overrides
-    const { results: specific } = await ctx.db.prepare("SELECT c.* FROM channels c JOIN link_channels lc ON c.id = lc.channel_id WHERE lc.link_id = ? ORDER BY c.position ASC, c.id ASC").bind(payload).all<DatabaseChannel>();
+    const { results: specific } = await ctx.db.prepare("SELECT c.* FROM channels c JOIN link_channels lc ON c.id = lc.channel_id WHERE lc.link_id = ? ORDER BY c.position ASC, c.id ASC").bind(String(payload)).all<DatabaseChannel>();
     targetChannels = (specific && specific.length > 0) ? specific : allChannels;
   } else {
     targetChannels = allChannels;
@@ -50,7 +50,7 @@ export async function getMissingChannels(ctx: MyContext, payload?: string): Prom
        * If they have, we treat them as joined to prevent delivery friction.
        */
       const exists = await ctx.db.prepare("SELECT user_id FROM join_requests WHERE user_id = ? AND channel_id = ?")
-        .bind(ctx.from!.id, channel.id.toString()).first();
+        .bind(Number(ctx.from!.id), String(channel.id)).first();
       
       if (exists) return null;
     } catch (e) { }

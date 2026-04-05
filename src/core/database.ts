@@ -3,7 +3,7 @@ import { DatabaseSetting, DatabaseAdmin } from "../types";
 /**
  * Escapes HTML special characters for Telegram messages.
  */
-export const esc = (str: any): string => 
+export const esc = (str: any): string =>
   String(str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /**
@@ -52,11 +52,17 @@ export async function trackUserActivity(db: D1Database, userId: number, username
     // 1. Update Core User Profile
     await db.prepare(
       "INSERT INTO users (user_id, username, first_name, last_active_at) " +
-      "VALUES (?1, ?2, ?3, CURRENT_TIMESTAMP) " +
-      "ON CONFLICT(user_id) DO UPDATE SET last_active_at = CURRENT_TIMESTAMP, username = ?2, first_name = ?3"
+      "VALUES (?, ?, ?, CURRENT_TIMESTAMP) " +
+      "ON CONFLICT(user_id) DO UPDATE SET last_active_at = CURRENT_TIMESTAMP, username = ?, first_name = ?"
     )
-    .bind(userId, username, firstName)
-    .run();
+      .bind(
+        Number(userId),
+        String(username || ""),
+        String(firstName || "User"),
+        String(username || ""),
+        String(firstName || "User")
+      )
+      .run();
   } catch (e) {
     console.error("Activity tracking failed:", e);
   }
