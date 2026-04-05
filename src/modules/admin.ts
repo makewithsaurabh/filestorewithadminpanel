@@ -281,8 +281,8 @@ async function renderAddToLinks(ctx: MyContext, msgId: string, page: number) {
   if (offset + 10 < total) kb.text("Next ▶️", `page_add_to_${msgId}_${page + 1}`);
   kb.row().text("❌ Cancel", "admin_main");
 
-  const text = `🎯 **Target Store** (Page ${page + 1})\nSelect the link where you want to add this file.`;
-  await ctx.editMessageText(text, { reply_markup: kb, parse_mode: "Markdown" });
+  const text = `🎯 <b>Target Store</b> (Page ${page + 1} | Total: ${total})\nSelect the link where you want to add this file.`;
+  await ctx.editMessageText(text, { reply_markup: kb, parse_mode: "HTML" });
 }
 
 // --- FILE RECEPTION ---
@@ -347,9 +347,9 @@ async function renderLinkList(ctx: MyContext, page: number) {
   if (offset + 10 < total) kb.text("Next ▶️", `page_links_${page + 1}`);
   kb.row().text("🔙 Back", "admin_main");
 
-  const text = `📂 **Link Management** (Page ${page + 1})\nSelect a link to manage.`;
-  if (ctx.callbackQuery) return ctx.editMessageText(text, { reply_markup: kb, parse_mode: "Markdown" });
-  return ctx.reply(text, { reply_markup: kb, parse_mode: "Markdown" });
+  const text = `📂 <b>Link Management</b> (Page ${page + 1} | Total: ${total})\nSelect a link to manage.`;
+  if (ctx.callbackQuery) return ctx.editMessageText(text, { reply_markup: kb, parse_mode: "HTML" });
+  return ctx.reply(text, { reply_markup: kb, parse_mode: "HTML" });
 }
 
 async function renderManageLink(ctx: MyContext, slug: string) {
@@ -357,14 +357,16 @@ async function renderManageLink(ctx: MyContext, slug: string) {
   if (!link) return;
   const { results: files } = await ctx.db.prepare("SELECT * FROM files WHERE link_id = ?").bind(slug).all<DatabaseFile>();
 
-  let text = `📂 **Store:** ${link.title}\nViews: ${link.views}\nID: \`${slug}\`\nURL: \`t.me/${ctx.me.username}?start=${slug}\`\n\n`;
+  const escapedTitle = esc(link.title);
+  let text = `📂 <b>Store:</b> ${escapedTitle}\nViews: ${link.views}\nID: <code>${slug}</code>\nURL: <code>t.me/${ctx.me.username}?start=${slug}</code>\n\n`;
   const kb = new InlineKeyboard();
   files.forEach(f => {
-    text += `• ${f.file_name} (${f.downloads}⬇️)\n`;
+    const fName = esc(f.file_name);
+    text += `• ${fName} (${f.downloads}⬇️)\n`;
   });
   kb.text("✏️ Rename Title", `link_rename_setup_${slug}`).row();
   kb.text("🛡️ Force Join Settings", `link_fj_settings_${slug}`).row();
   kb.text("🗑 Delete Whole Link", `del_link_${slug}`).row().text("🔙 Back", "page_links_0");
 
-  await ctx.editMessageText(text, { reply_markup: kb, parse_mode: "Markdown" });
+  await ctx.editMessageText(text, { reply_markup: kb, parse_mode: "HTML" });
 }

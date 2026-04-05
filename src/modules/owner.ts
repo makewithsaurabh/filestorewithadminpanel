@@ -276,7 +276,15 @@ ownerModule.callbackQuery("owner_exclusions", async (ctx) => {
     .text("📢 Broadcast Exclusions", "manage_excl_broadcast").row()
     .text("🔒 Force-Join Whitelist", "manage_excl_fj").row()
     .text("🔙 Back", "admin_main");
-  await ctx.editMessageText("🚫 **Exclusion Management**\n\nManage users who are bypassed by key bot features.", { reply_markup: kb, parse_mode: "Markdown" });
+    
+  const guide = "🚫 **Exclusion Management**\n\n" +
+                "**1. Broadcast Exclusions:** Users who won't receive global messages.\n" +
+                "• Add manually: `/exclude <user_id>`\n\n" +
+                "**2. Force-Join Whitelist:** Users who bypass join requirements.\n" +
+                "• Add manually: `/fj_exclude <user_id>`\n\n" +
+                "*Managing these lists ensures premium users or staff can skip restrictions.*";
+
+  await ctx.editMessageText(guide, { reply_markup: kb, parse_mode: "Markdown" });
 });
 
 ownerModule.callbackQuery("manage_excl_broadcast", async (ctx) => {
@@ -362,25 +370,41 @@ ownerModule.callbackQuery("id_block_info", async (ctx) => {
   if (!isAdmin(ctx)) return;
   await ctx.answerCallbackQuery();
   await ctx.editMessageText("🚫 **Block User**\n\nPlease send the **User ID** you want to block.\n\nType /cancel to stop or click below to see currently blocked users.", {
-    reply_markup: new InlineKeyboard().text("📋 Show Blocked List", "admin_block_list").row().text("🔙 Back", "admin_main"),
+    reply_markup: new InlineKeyboard().text("📋 Show Blocked List", "admin_block_list_0").row().text("🔙 Back", "admin_main"),
     parse_mode: "Markdown"
   });
   await ctx.db.prepare("INSERT OR REPLACE INTO admin_states (admin_id, state) VALUES (?, ?)")
     .bind(ctx.from!.id, `wait_block_id`).run();
 });
 
-ownerModule.callbackQuery("admin_block_list", async (ctx) => {
+ownerModule.callbackQuery(/^admin_block_list(_(\d+))?$/, async (ctx) => {
   if (!isAdmin(ctx)) return;
   await ctx.answerCallbackQuery();
-  return renderBlockList(ctx);
+  const page = ctx.match[2] ? parseInt(ctx.match[2]) : 0;
+  return renderBlockList(ctx, page);
 });
 
 ownerModule.callbackQuery(/^del_block_(\d+)$/, async (ctx) => {
   if (!isAdmin(ctx)) return;
   const targetId = ctx.match[1];
-  await ctx.db.prepare("DELETE FROM blocked_users WHERE user_id = ?").bind(targetId).run();
+  await ctx.db.prepare("DELETE FROM blocked_users WHERE user_id = ?").bind(Number(targetId)).run();
   await ctx.answerCallbackQuery("✅ User unblocked.");
-  return renderBlockList(ctx);
+  return renderBlockList(ctx, 0);
+});
+
+// --- BULK UNBLOCK ALL ---
+ownerModule.callbackQuery("unblock_all_confirm", async (ctx) => {
+  if (!isAdmin(ctx)) return;
+  await ctx.answerCallbackQuery();
+  const kb = new InlineKeyboard().text("✅ YES, Unblock ALL", "unblock_all_execute").row().text("❌ Cancel", "admin_block_list_0");
+  await ctx.editMessageText("⚠️ <b>DANGER ZONE</b>\n\nAre you sure you want to <b>Unblock ALL</b> users? This action cannot be undone.", { reply_markup: kb, parse_mode: "HTML" });
+});
+
+ownerModule.callbackQuery("unblock_all_execute", async (ctx) => {
+  if (!isAdmin(ctx)) return;
+  const res = await ctx.db.prepare("DELETE FROM blocked_users").run();
+  await ctx.answerCallbackQuery({ text: `✅ Purged ${res.meta.changes} users.`, show_alert: true });
+  return renderBlockList(ctx, 0);
 });
 
 // --- SETTINGS & TEXTS MANAGEMENT ---
@@ -497,14 +521,14 @@ ownerModule.callbackQuery(/^broadcast_history_(\d+)$/, async (ctx) => {
   const countRes = await ctx.db.prepare("SELECT COUNT(*) as c FROM broadcasts").first<{ c: number }>();
   const total = countRes?.c || 0;
 
-  let text = `📊 **Broadcast History** (Page ${page + 1})\n\n`;
+  let text = `📊 <b>Broadcast History</b> (Page ${page + 1} | Total: ${total})\n\n`;
   const kb = new InlineKeyboard();
 
   if (broadcasts.length === 0) text += "_No broadcasts recorded yet._";
   else {
     broadcasts.forEach((b: any) => {
       const statusIcon = b.status === 'completed' ? '✅' : (b.status === 'running' ? '⏳' : '🕒');
-      text += `${statusIcon} **ID #${b.id}** (${b.status})\n`;
+      text += `${statusIcon} <b>ID #${b.id}</b> (${b.status})\n`;
       text += `📅 ${new Date(b.created_at).toLocaleString()}\n`;
       text += `🏁 Total: ${b.total_users} | ✅ Sent: ${b.sent} | ❌ Fail: ${b.failed}\n\n`;
       kb.text(`🔍 Details #${b.id}`, `broadcast_report_${b.id}`).row();
@@ -637,7 +661,7 @@ ownerModule.callbackQuery(/^owner_users_(\d+)$/, async (ctx) => {
   const page = parseInt(ctx.match[1]);
   const data = await Stats.getUserDirectory(ctx, page);
   
-  let text = `👤 <b>User Directory</b> (Page ${page + 1})\n\n`;
+  let text = `👤 <b>User Directory</b> (Page ${page + 1} | Total: ${data.total})\n\n`;
   data.users.forEach((u: any) => {
     const name = u.first_name ? esc(u.first_name) : "User";
     text += `• <a href="tg://user?id=${u.user_id}">${name}</a> (<code>${u.user_id}</code>)\n`;
@@ -675,13 +699,14 @@ ownerModule.callbackQuery(/^confirm_broadcast:(.+)$/, async (ctx) => {
  */
 async function renderOwnerAdmins(ctx: MyContext) {
   const { results: admins } = await ctx.db.prepare("SELECT a.*, u.first_name as name FROM admins a LEFT JOIN users u ON a.user_id = u.user_id").all<any>();
-  let text = "👤 **Manage Admin Staff:**\n\n";
+  let text = "👤 <b>Manage Admin Staff:</b>\n\n";
   const kb = new InlineKeyboard();
   
   admins.forEach((a: any) => {
     const rawName = a.name || "Unknown";
     const roleIcon = a.role === "owner" ? "👑" : "🛡️";
-    text += `${roleIcon} **${rawName}** (\`${a.user_id}\`)\n`;
+    const escapedName = esc(rawName);
+    text += `${roleIcon} <b>${escapedName}</b> (<code>${a.user_id}</code>)\n`;
     
     // Cannot revoke the root admin (from config)
     if (a.user_id.toString() !== ctx.config.ADMIN_UID) {
@@ -695,38 +720,55 @@ async function renderOwnerAdmins(ctx: MyContext) {
   });
   
   kb.text("➕ Add Admin", "add_adm_info").row().text("🔙 Back", "admin_main");
-  await ctx.editMessageText(text, { reply_markup: kb, parse_mode: "Markdown" });
+  await ctx.editMessageText(text, { reply_markup: kb, parse_mode: "HTML" });
 }
 
 async function renderAdminPicker(ctx: MyContext) {
   const { results: admins } = await ctx.db.prepare("SELECT a.user_id, u.first_name as name FROM admins a LEFT JOIN users u ON a.user_id = u.user_id").all<any>();
-  let text = "🎯 **Choose Target Administrator**\n\nSelect which staff member will own the link you are about to create:";
+  let text = "🎯 <b>Choose Target Administrator</b>\n\nSelect which staff member will own the link you are about to create:";
   const kb = new InlineKeyboard();
   
   admins.forEach((a: any) => {
-    kb.text(`🛡️ ${a.name || a.user_id}`, `set_create_link_for_${a.user_id}`).row();
+    const escapedName = esc(a.name || a.user_id);
+    kb.text(`🛡️ ${escapedName}`, `set_create_link_for_${a.user_id}`).row();
   });
   
-  kb.text("🔙 Back", "admin_main");
-  await ctx.editMessageText(text, { reply_markup: kb, parse_mode: "Markdown" });
+  kb.row().text("🔙 Back", "admin_main");
+  await ctx.editMessageText(text, { reply_markup: kb, parse_mode: "HTML" });
 }
 
-async function renderBlockList(ctx: MyContext) {
-  const { results: blocked } = await ctx.db.prepare("SELECT bu.*, u.first_name FROM blocked_users bu LEFT JOIN users u ON bu.user_id = u.user_id").all<any>();
-  let text = "🚫 **Blocked Users Directory:**\n\n";
+async function renderBlockList(ctx: MyContext, page: number = 0) {
+  const limit = 10;
+  const offset = page * limit;
+
+  const { results: blocked } = await ctx.db.prepare("SELECT bu.*, u.first_name FROM blocked_users bu LEFT JOIN users u ON bu.user_id = u.user_id LIMIT ? OFFSET ?")
+    .bind(limit, offset).all<any>();
+  const totalCount = await ctx.db.prepare("SELECT COUNT(*) as c FROM blocked_users").first<{ c: number }>();
+  const total = totalCount?.c || 0;
+
+  let text = `🚫 <b>Blocked Users Directory:</b> (Page ${page + 1} | Total: ${total})\n\n`;
   const kb = new InlineKeyboard();
   
   if (blocked.length === 0) {
-    text += "_No users are currently blocked._";
+    if (page > 0) text += "<i>No more users on this page.</i>";
+    else text += "<i>No users are currently blocked.</i>";
   } else {
     blocked.forEach((u: any) => {
-      text += `• ${u.first_name || "User"} (\`${u.user_id}\`)\n`;
+      const name = esc(u.first_name || "User");
+      text += `• ${name} (<code>${u.user_id}</code>)\n`;
       kb.text(`🗑 Unblock ${u.user_id}`, `del_block_${u.user_id}`).row();
     });
   }
   
-  kb.text("🔙 Back", "admin_main");
-  const opts = { reply_markup: kb, parse_mode: "Markdown" as const };
+  if (page > 0) kb.text("◀️ Prev", `admin_block_list_${page - 1}`);
+  if (offset + limit < total) kb.text("Next ▶️", `admin_block_list_${page + 1}`);
+
+  if (total > 0) {
+    kb.row().text("🗑 Unblock ALL Users", "unblock_all_confirm");
+  }
+
+  kb.row().text("🔙 Back", "admin_main");
+  const opts = { reply_markup: kb, parse_mode: "HTML" as const };
   if (ctx.callbackQuery) return ctx.editMessageText(text, opts);
   return ctx.reply(text, opts);
 }
