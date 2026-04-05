@@ -44,9 +44,9 @@ adminModule.command("skip", async (ctx) => {
 adminModule.command("bulk", async (ctx) => {
   if (!isAdmin(ctx)) return;
   await ctx.db.prepare("DELETE FROM temp_bulk_files WHERE admin_id = ?").bind(ctx.from!.id).run();
-  
+
   const statusMsg = await ctx.reply("🔥 **Bulk Mode Active!**\n\n1. Send all files to include in this link.\n2. Use ** /done ** to generate the link.\n3. Use ** /cancel ** to stop.\n\n📥 **Collected:** 0", { parse_mode: "Markdown" });
-  
+
   await ctx.db.prepare("INSERT OR REPLACE INTO admin_states (admin_id, state) VALUES (?, ?)")
     .bind(ctx.from!.id, `bulk_mode:${statusMsg.message_id}`).run();
 });
@@ -67,26 +67,36 @@ adminModule.command("done", async (ctx) => {
     const customName = ctx.match.trim();
     const slug = Math.random().toString(36).substring(2, 8);
     const title = customName || `Bulk Store ${slug}`;
-    
+
     let linkCreatedBy = ctx.from!.id;
     const secondaryCheck = await ctx.db.prepare("SELECT state FROM admin_states WHERE admin_id = ? AND state LIKE 'create_link_for_%'").bind(ctx.from!.id).first<{ state: string }>();
     if (secondaryCheck) linkCreatedBy = parseInt(secondaryCheck.state.replace("create_link_for_", ""));
 
-    const statements = [
-      ctx.db.prepare("INSERT INTO links (id, title, added_by) VALUES (?, ?, ?)").bind(slug, title, linkCreatedBy)
-    ];
+    // 1. Create Link immediately
+    await ctx.db.prepare("INSERT INTO links (id, title, added_by) VALUES (?, ?, ?)")
+      .bind(String(slug), String(title), Number(linkCreatedBy)).run();
 
-    for (const t of temps) {
-      statements.push(ctx.db.prepare("INSERT INTO files (link_id, file_id, file_unique_id, file_name) VALUES (?, ?, ?, ?)").bind(slug, t.file_id, "bulk", t.file_name));
-      statements.push(ctx.db.prepare("INSERT INTO storage_logs (admin_id, admin_name, file_id, file_name, link_id) VALUES (?, ?, ?, ?, ?)").bind(linkCreatedBy, ctx.from!.username || ctx.from!.first_name, t.file_id, t.file_name, slug));
-    }
+      for (const t of temps) {
+        // 2. Sequential File Record
+        await ctx.db.prepare("INSERT INTO files (link_id, file_id, file_unique_id, file_name) VALUES (?, ?, ?, ?)")
+          .bind(String(slug), String(t.file_id), "bulk", String(t.file_name || "File")).run();
 
-    statements.push(ctx.db.prepare("DELETE FROM temp_bulk_files WHERE admin_id = ?").bind(ctx.from!.id));
-    
-    await ctx.db.batch(statements);
+        // 3. Sequential Storage Log (Guaranteed Binding Count)
+        await ctx.db.prepare("INSERT INTO storage_logs (admin_id, admin_name, file_id, file_name, link_id) VALUES (?, ?, ?, ?, ?)")
+          .bind(
+            Number(linkCreatedBy),
+            String(ctx.from!.username || ctx.from!.first_name || "Admin"),
+            String(t.file_id),
+            String(t.file_name || "File"),
+            String(slug)
+          ).run();
+      }
 
-    if (statusMsgId) await ctx.api.deleteMessage(ctx.from!.id, statusMsgId).catch(() => {});
-    await ctx.api.deleteMessage(ctx.from!.id, processMsg.message_id).catch(() => {});
+      // 4. Sequential Cleanup
+      await ctx.db.prepare("DELETE FROM temp_bulk_files WHERE admin_id = ?").bind(Number(ctx.from!.id)).run();
+
+    if (statusMsgId) await ctx.api.deleteMessage(ctx.from!.id, statusMsgId).catch(() => { });
+    await ctx.api.deleteMessage(ctx.from!.id, processMsg.message_id).catch(() => { });
 
     if (customName) {
       await ctx.db.prepare("DELETE FROM admin_states WHERE admin_id = ?").bind(ctx.from!.id).run();
@@ -197,17 +207,17 @@ adminModule.callbackQuery(/^new_link_(.+)$/, async (ctx) => {
   const msgId = ctx.match[1];
   const stateRow = await ctx.db.prepare("SELECT state FROM admin_states WHERE admin_id = ? AND state LIKE 'last_file_name:%'").bind(ctx.from!.id).first<{ state: string }>();
   const fName = stateRow ? stateRow.state.replace("last_file_name:", "") : "File";
-  
+
   const slug = Math.random().toString(36).substring(2, 8);
-  
+
   await ctx.db.prepare("INSERT INTO links (id, title, added_by) VALUES (?, ?, ?)")
     .bind(slug, fName, ctx.from!.id).run();
   await ctx.db.prepare("INSERT INTO files (link_id, file_id, file_unique_id, file_name) VALUES (?, ?, ?, ?)")
     .bind(slug, msgId, "manual_single", fName).run();
-  
+
   await ctx.answerCallbackQuery("✨ Link Created!");
   await ctx.db.prepare("UPDATE admin_states SET state = ? WHERE admin_id = ?").bind(`wait_rename:${slug}:${ctx.callbackQuery.message?.message_id}`, ctx.from!.id).run();
-  
+
   await ctx.editMessageText(`✅ **File stored securely!**\n\nPlease **send a Name** for this link now, or use /skip to keep default.`, { parse_mode: "Markdown" });
 });
 
@@ -242,7 +252,7 @@ adminModule.callbackQuery(/^confirm_add_(.+)_(.+)$/, async (ctx) => {
 
   await ctx.db.prepare("INSERT INTO files (link_id, file_id, file_unique_id, file_name) VALUES (?, ?, ?, ?)")
     .bind(slug, msgId, "manual_add", fName).run();
-  
+
   /**
    * ➕ UI Feedback
    * Acknowledging the callback ensures the user sees an immediate 'toast' or 
@@ -300,12 +310,12 @@ adminModule.on(":file", async (ctx) => {
       await ctx.db.prepare("INSERT INTO temp_bulk_files (admin_id, file_id, file_name) VALUES (?, ?, ?)").bind(ctx.from!.id, forward.message_id.toString(), fName).run();
       const countRes = await ctx.db.prepare("SELECT COUNT(*) as c FROM temp_bulk_files WHERE admin_id = ?").bind(ctx.from!.id).first<{ c: number }>();
       const count = countRes?.c || 0;
-      
+
       const statusMsgId = parseInt(stateRow.state.split(":")[1]);
       const newText = `🔥 **Bulk Mode Active!**\n📥 **Collected:** ${fName} (#${count})\n\nUse /done to finish.`;
-      
+
       await ctx.api.deleteMessage(ctx.from!.id, stMsg.message_id).catch(() => { });
-      if (statusMsgId) await ctx.api.editMessageText(ctx.from!.id, statusMsgId, newText, { parse_mode: "Markdown" }).catch(() => {});
+      if (statusMsgId) await ctx.api.editMessageText(ctx.from!.id, statusMsgId, newText, { parse_mode: "Markdown" }).catch(() => { });
       return;
     }
 
@@ -344,7 +354,7 @@ async function renderManageLink(ctx: MyContext, slug: string) {
   const link = await ctx.db.prepare("SELECT * FROM links WHERE id = ?").bind(slug).first<DatabaseLink>();
   if (!link) return;
   const { results: files } = await ctx.db.prepare("SELECT * FROM files WHERE link_id = ?").bind(slug).all<DatabaseFile>();
-  
+
   let text = `📂 **Store:** ${link.title}\nViews: ${link.views}\nID: \`${slug}\`\nURL: \`t.me/${ctx.me.username}?start=${slug}\`\n\n`;
   const kb = new InlineKeyboard();
   files.forEach(f => {
@@ -353,6 +363,6 @@ async function renderManageLink(ctx: MyContext, slug: string) {
   kb.text("✏️ Rename Title", `link_rename_setup_${slug}`).row();
   kb.text("🛡️ Force Join Settings", `link_fj_settings_${slug}`).row();
   kb.text("🗑 Delete Whole Link", `del_link_${slug}`).row().text("🔙 Back", "page_links_0");
-  
+
   await ctx.editMessageText(text, { reply_markup: kb, parse_mode: "Markdown" });
 }
