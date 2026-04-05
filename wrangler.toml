@@ -3,13 +3,13 @@ main = "src/index.ts"
 compatibility_date = "2024-03-31"
 
 [vars]
-STORAGE_CHANNEL_ID = "-1003841646501"
-BACKUP_STORAGE_ID = "-1002076298756"
-ADMIN_UID = "5948619751"
-ADMIN_API_KEY = "100rav meena"
-RENDER_URL = "https://broadcastingbot.onrender.com"
-# Note: BOT_TOKEN is assumed to be a secret in Cloudflare (or pass here if needed)
-BOT_TOKEN = "8234849305:AAHawEKZpcvw1_0aCUdNnW0_u1u9saFdzog"
+STORAGE_CHANNEL_ID = "YOUR_STORAGE_CHANNEL_ID"
+BACKUP_STORAGE_ID = "YOUR_BACKUP_STORAGE_ID"
+ADMIN_UID = "YOUR_ADMIN_TELEGRAM_ID"
+ADMIN_API_KEY = "YOUR_CUSTOM_ADMIN_KEY"
+RENDER_URL = "https://your-broadcast-engine.onrender.com"
+# Note: BOT_TOKEN must be set via 'wrangler secret put BOT_TOKEN'
+# BOT_TOKEN = "HIDDEN"
 
 [[d1_databases]]
 binding = "DB"
